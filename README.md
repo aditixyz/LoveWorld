@@ -1,101 +1,75 @@
-<div align="center">
+# React + TypeScript + Vite
 
-# 💗 Project Loveworld 💗
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
-### ✨ Two hearts. One little corner of the internet. ✨
+Currently, two official plugins are available:
 
-<p>
-  <img src="https://readme-typing-svg.demolab.com?font=Quicksand&weight=600&size=22&duration=3000&pause=1000&color=E879A9&center=true&vCenter=true&width=600&lines=A+little+home+for+our+memories+%F0%9F%8C%B7;Love+notes%2C+photos+%26+surprises+%F0%9F%92%8C;Every+memory+deserves+a+place+%F0%9F%93%B8;Made+with+love%2C+built+with+code+%E2%9D%A4%EF%B8%8F" alt="Animated Project Loveworld introduction" />
-</p>
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
 
-<p>
-  <img src="https://img.shields.io/badge/Made%20with-LOVE-ff69b4?style=for-the-badge&logo=heart&logoColor=white" alt="Made with love" />
-  <img src="https://img.shields.io/badge/Access-Private-9b72cf?style=for-the-badge&logo=lock&logoColor=white" alt="Private access" />
-  <img src="https://img.shields.io/badge/Status-In%20Development-ffc0cb?style=for-the-badge" alt="In development" />
-</p>
+## React Compiler
 
-<img src="https://capsule-render.vercel.app/api?type=soft&color=0:ffe0ec,50:f8c8dc,100:e6d6ff&height=120&section=header&text=Our%20Little%20Memory%20World%20%F0%9F%8C%B8&fontSize=27&fontColor=704763&animation=fadeIn" width="100%" alt="Pastel animated-style banner" />
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
 
-</div>
+## Expanding the ESLint configuration
 
----
+If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
 
-## 🌷 What is Project Loveworld?
+```js
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      // Other configs...
 
-**Project Loveworld** is a private, romantic website designed for two people to keep their memories, little messages, and surprises together.
+      // Remove tseslint.configs.recommended and replace with this
+      tseslint.configs.recommendedTypeChecked,
+      // Alternatively, use this for stricter rules
+      tseslint.configs.strictTypeChecked,
+      // Optionally, add this for stylistic rules
+      tseslint.configs.stylisticTypeChecked,
 
-Think of it as a tiny digital world where photographs become memories, notes become little gifts, and ordinary days can bring unexpected surprises. 💌
+      // Other configs...
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.node.json', './tsconfig.app.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+      // other options...
+    },
+  },
+])
 
-> *A little website for the moments we never want to forget.* 💕
+```
 
-## 💌 Features
+You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
 
-<table>
-<tr>
-<td width="50%" align="center">
+```js
+// eslint.config.js
+import reactX from 'eslint-plugin-react-x'
+import reactDom from 'eslint-plugin-react-dom'
 
-### 💗 Love Notes
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      // Other configs...
+      // Enable lint rules for React
+      reactX.configs['recommended-typescript'],
+      // Enable lint rules for React DOM
+      reactDom.configs.recommended,
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.node.json', './tsconfig.app.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+      // other options...
+    },
+  },
+])
 
-Leave sweet messages for each other and revisit them whenever you want.
-
-</td>
-<td width="50%" align="center">
-
-### 📸 Memory Gallery
-
-Upload photographs, add captions, and build your own collection of memories.
-
-</td>
-</tr>
-<tr>
-<td width="50%" align="center">
-
-### 🎞️ Memory Slideshow
-
-Let your favorite pictures become a beautiful rotating background.
-
-</td>
-<td width="50%" align="center">
-
-### 🎨 Automatic Collages
-
-Turn selected photographs into cute collages using different layouts.
-
-</td>
-</tr>
-<tr>
-<td width="50%" align="center">
-
-### 🎁 Daily Surprise
-
-A background worker prepares a surprise collage at a randomized time each day.
-
-</td>
-<td width="50%" align="center">
-
-### 🔐 Private by Design
-
-Two pre-created accounts, protected access, and private photo storage.
-
-</td>
-</tr>
-</table>
-
-## ✨ How It Works
-
-```mermaid
-flowchart TD
-    A["💗 Two Private Accounts"] --> B["💌 Love Notes"]
-    A --> C["📸 Memory Gallery"]
-    C --> D["🎞️ Random Slideshow"]
-    C --> E["🎨 Collage Generator"]
-    E --> F["🎁 Daily Surprise"]
-    F --> G["💕 Memories to Revisit"]
-
-    style A fill:#ffe0ec,stroke:#e879a9,color:#66334d
-    style B fill:#fff0f5,stroke:#e879a9,color:#66334d
-    style C fill:#f5e8ff,stroke:#b794d6,color:#50366b
-    style D fill:#fff0f5,stroke:#e879a9,color:#66334d
-    style E fill:#f5e8ff,stroke:#b794d6,color:#50366b
-    style F fill:#ffe0ec,stroke:#e879a9,color:#66334d
-    style G fill:#ffe0ec,stroke:#e879a9,color:#66334d
+```
