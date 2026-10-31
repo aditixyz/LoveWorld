@@ -32,11 +32,13 @@ def love_note_context() -> Iterator[tuple[Session, User, User, Settings]]:
     Base.metadata.create_all(engine)
     db = sessionmaker(bind=engine, autoflush=False)()
     owner = User(
+        account_slot=1,
         username="love-note-owner",
         password_hash=hash_password("owner-password-for-tests"),
         display_name="Love Note Owner",
     )
     other_user = User(
+        account_slot=2,
         username="love-note-reader",
         password_hash=hash_password("reader-password-for-tests"),
         display_name="Love Note Reader",

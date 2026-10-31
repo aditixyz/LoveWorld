@@ -42,11 +42,13 @@ def photo_context() -> Iterator[tuple[Session, User, User, Settings]]:
     Base.metadata.create_all(engine)
     db = sessionmaker(bind=engine, autoflush=False)()
     owner = User(
+        account_slot=1,
         username="photo-owner",
         password_hash=hash_password("owner-password-for-tests"),
         display_name="Photo Owner",
     )
     other_user = User(
+        account_slot=2,
         username="photo-reader",
         password_hash=hash_password("reader-password-for-tests"),
         display_name="Photo Reader",
@@ -524,6 +526,7 @@ def test_database_write_failures_are_generic_and_rolled_back(
     photo_context: tuple[Session, User, User, Settings],
     monkeypatch: pytest.MonkeyPatch,
     operation: str,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     db, owner, _, settings = photo_context
     photo = _create_photo(db, owner, "original.jpg") if operation == "update" else None
@@ -556,6 +559,10 @@ def test_database_write_failures_are_generic_and_rolled_back(
     assert response.json() == {"detail": "Database operation unavailable"}
     assert "password" not in response.text.lower()
     assert "INSERT" not in response.text
+    assert "OperationalError" in caplog.text
+    assert "photo." in caplog.text
+    assert "private database password and SQL details" not in caplog.text
+    assert "INSERT INTO photos" not in caplog.text
     if operation == "create":
         assert db.scalar(select(func.count()).select_from(Photo)) == 0
     else:
@@ -751,6 +758,91 @@ def test_upload_rejects_oversized_and_excessive_dimension_images(
         content_type="image/png",
     )
     assert too_many_pixels.status_code == 422
+
+
+def test_upload_accepts_image_at_configured_size_limit_with_multipart_overhead(
+    photo_context: tuple[Session, User, User, Settings],
+) -> None:
+    db, owner, _, settings = photo_context
+    image = _image_bytes()
+    settings.photo_max_upload_bytes = len(image)
+
+    response = _upload(_token(owner, settings), image)
+
+    assert response.status_code == 201
+    assert db.scalar(select(func.count()).select_from(Photo)) == 1
+
+
+def test_upload_request_body_limit_rejects_before_multipart_parsing(
+    photo_context: tuple[Session, User, User, Settings],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db, owner, _, settings = photo_context
+    settings.photo_max_upload_bytes = 128
+    from app.middleware import upload_size_limit
+
+    monkeypatch.setattr(upload_size_limit, "get_settings", lambda: settings)
+    boundary = "test-boundary"
+    body = (
+        f"--{boundary}\r\n"
+        'Content-Disposition: form-data; name="file"; filename="photo.jpg"\r\n'
+        "Content-Type: image/jpeg\r\n\r\n"
+    ).encode() + b"x" * (128 + 64 * 1024 + 1)
+
+    response = _request(
+        "POST",
+        "/photos/upload",
+        token=_token(owner, settings),
+        content=body,
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+    )
+
+    assert response.status_code == 413
+    assert response.json()["detail"] == "Photo upload request exceeds the size limit"
+    assert db.scalar(select(func.count()).select_from(Photo)) == 0
+
+
+def test_upload_request_body_limit_counts_streamed_body_without_content_length(
+    photo_context: tuple[Session, User, User, Settings],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, _, _, settings = photo_context
+    settings.photo_max_upload_bytes = 1
+    from app.middleware import upload_size_limit
+
+    monkeypatch.setattr(upload_size_limit, "get_settings", lambda: settings)
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/photos/upload",
+        "headers": [],
+    }
+    messages = [
+        {
+            "type": "http.request",
+            "body": b"x" * (1 + 64 * 1024 + 1),
+            "more_body": False,
+        }
+    ]
+    responses: list[dict[str, object]] = []
+
+    async def receive() -> dict[str, object]:
+        return messages.pop(0)
+
+    async def send(message: dict[str, object]) -> None:
+        responses.append(message)
+
+    async def consume_body(scope, receive, send) -> None:
+        while (await receive())["type"] == "http.request":
+            continue
+
+    middleware = upload_size_limit.UploadRequestSizeLimitMiddleware(consume_body)
+    asyncio.run(middleware(scope, receive, send))
+
+    response_start = next(
+        message for message in responses if message["type"] == "http.response.start"
+    )
+    assert response_start["status"] == 413
 
 
 def test_upload_rejects_client_attempts_to_set_owner_or_storage_key(

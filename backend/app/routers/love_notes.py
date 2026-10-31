@@ -12,6 +12,7 @@ from app.auth.authorization import (
     require_resource_owner,
 )
 from app.auth.dependencies import get_current_user
+from app.db.errors import log_database_error
 from app.db.models import LoveNote, User
 from app.db.session import get_db
 from app.schemas.love_note import (
@@ -27,11 +28,16 @@ DatabaseSession = Annotated[Session, Depends(get_db)]
 AuthenticatedUser = Annotated[User, Depends(get_current_user)]
 
 
-def _database_unavailable(db: Session) -> HTTPException:
+def _database_unavailable(
+    db: Session,
+    operation: str,
+    error: SQLAlchemyError,
+) -> HTTPException:
+    log_database_error(logger, operation, error)
     try:
         db.rollback()
-    except SQLAlchemyError:
-        logger.error("Database rollback failed while handling a love note operation")
+    except SQLAlchemyError as rollback_error:
+        log_database_error(logger, f"{operation}.rollback", rollback_error)
     return HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         detail="Database operation unavailable",
@@ -56,8 +62,8 @@ def create_love_note(
         db.add(note)
         db.commit()
         db.refresh(note)
-    except SQLAlchemyError:
-        raise _database_unavailable(db) from None
+    except SQLAlchemyError as error:
+        raise _database_unavailable(db, "love_note.create", error) from None
     return LoveNoteResponse.model_validate(note)
 
 
@@ -83,8 +89,8 @@ def list_love_notes(
             .limit(limit)
             .offset(offset)
         ).all()
-    except SQLAlchemyError:
-        raise _database_unavailable(db) from None
+    except SQLAlchemyError as error:
+        raise _database_unavailable(db, "love_note.list", error) from None
     return LoveNotePage(
         items=[LoveNoteResponse.model_validate(note) for note in notes],
         total=total or 0,
@@ -101,8 +107,8 @@ def get_love_note(
 ) -> LoveNoteResponse:
     try:
         note = require_resource_access(db.get(LoveNote, note_id), user)
-    except SQLAlchemyError:
-        raise _database_unavailable(db) from None
+    except SQLAlchemyError as error:
+        raise _database_unavailable(db, "love_note.read", error) from None
     return LoveNoteResponse.model_validate(note)
 
 
@@ -119,8 +125,8 @@ def update_love_note(
             setattr(note, field, value)
         db.commit()
         db.refresh(note)
-    except SQLAlchemyError:
-        raise _database_unavailable(db) from None
+    except SQLAlchemyError as error:
+        raise _database_unavailable(db, "love_note.update", error) from None
     return LoveNoteResponse.model_validate(note)
 
 
@@ -138,6 +144,6 @@ def delete_love_note(
         note = require_resource_owner(db.get(LoveNote, note_id), user)
         db.delete(note)
         db.commit()
-    except SQLAlchemyError:
-        raise _database_unavailable(db) from None
+    except SQLAlchemyError as error:
+        raise _database_unavailable(db, "love_note.delete", error) from None
     return Response(status_code=status.HTTP_204_NO_CONTENT)

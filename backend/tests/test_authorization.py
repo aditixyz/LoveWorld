@@ -14,6 +14,7 @@ from app.db.models import LoveNote, Memory, Photo, User
 def _user(user_id: int) -> User:
     return User(
         id=user_id,
+        account_slot=user_id,
         username=f"user-{user_id}",
         password_hash="not-used-in-this-test",
         display_name=f"User {user_id}",
