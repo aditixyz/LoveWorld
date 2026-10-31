@@ -32,11 +32,13 @@ def memory_context() -> Iterator[tuple[Session, User, User, Settings]]:
     Base.metadata.create_all(engine)
     db = sessionmaker(bind=engine, autoflush=False)()
     owner = User(
+        account_slot=1,
         username="memory-owner",
         password_hash=hash_password("owner-password-for-tests"),
         display_name="Memory Owner",
     )
     other_user = User(
+        account_slot=2,
         username="memory-reader",
         password_hash=hash_password("reader-password-for-tests"),
         display_name="Memory Reader",
@@ -438,6 +440,7 @@ def test_list_validates_pagination_bounds(
 def test_database_write_failure_rolls_back_and_hides_internal_error(
     memory_context: tuple[Session, User, User, Settings],
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     db, owner, _, settings = memory_context
 
@@ -460,4 +463,8 @@ def test_database_write_failure_rolls_back_and_hides_internal_error(
     assert response.json() == {"detail": "Database operation unavailable"}
     assert "password" not in response.text.lower()
     assert "INSERT" not in response.text
+    assert "OperationalError" in caplog.text
+    assert "memory.create" in caplog.text
+    assert "private database password and SQL details" not in caplog.text
+    assert "INSERT INTO memories" not in caplog.text
     assert db.scalar(select(func.count()).select_from(Memory)) == 0

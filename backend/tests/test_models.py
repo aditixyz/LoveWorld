@@ -1,14 +1,15 @@
 import pytest
-from sqlalchemy import DateTime, UniqueConstraint
+from sqlalchemy import CheckConstraint, DateTime, UniqueConstraint
 from sqlalchemy.exc import IntegrityError
 
 from app.db.base import Base
-from app.db.models import DailySurprise, LoveNote, Memory, Photo, User
+from app.db.models import DailySurprise, LoginRateLimit, LoveNote, Memory, Photo, User
 
 
 def test_all_initial_models_are_registered_in_metadata() -> None:
     assert set(Base.metadata.tables) == {
         "users",
+        "login_rate_limits",
         "memories",
         "love_notes",
         "photos",
@@ -20,6 +21,32 @@ def test_user_username_is_unique_and_indexed() -> None:
     assert any(
         index.name == "ix_users_username" and index.unique is True
         for index in User.__table__.indexes
+    )
+
+
+def test_user_account_slots_constrain_the_account_count() -> None:
+    assert any(
+        constraint.name == "ck_users_account_slot"
+        and isinstance(constraint, CheckConstraint)
+        for constraint in User.__table__.constraints
+    )
+    assert any(
+        constraint.name == "uq_users_account_slot"
+        and isinstance(constraint, UniqueConstraint)
+        and tuple(column.name for column in constraint.columns) == ("account_slot",)
+        for constraint in User.__table__.constraints
+    )
+
+
+def test_login_rate_limit_model_has_expiry_index_and_positive_attempts() -> None:
+    assert LoginRateLimit.__table__.c.key_hash.primary_key
+    assert any(
+        constraint.name == "ck_login_rate_limits_attempts"
+        for constraint in LoginRateLimit.__table__.constraints
+    )
+    assert any(
+        index.name == "ix_login_rate_limits_window_started_at"
+        for index in LoginRateLimit.__table__.indexes
     )
 
 

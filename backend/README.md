@@ -1,15 +1,13 @@
 # LoveWorld backend
 
-This directory contains the initial FastAPI backend foundation. It includes a
-health endpoint, environment-based settings, SQLAlchemy database plumbing, and
-Alembic configuration, the initial database schema, and private bearer-token
-authentication for the two provisioned accounts. The Memory API provides
-authenticated, ownership-aware memory CRUD; other private data endpoints are
-not implemented.
+Private FastAPI backend for two intended users. It provides bearer-token
+authentication, private/shared memory, love-note and photo metadata APIs,
+private photo uploads and delivery, health checks, and Alembic-managed
+PostgreSQL schema migrations.
 
-## Set up the development environment
+## Development setup
 
-From the repository root, enter `backend` and run these commands in PowerShell:
+From the repository root, prepare the backend environment in PowerShell:
 
 ```powershell
 Set-Location .\backend
@@ -17,420 +15,244 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 Copy-Item .env.template .env
-notepad .env
 ```
 
-Edit `backend\.env` and replace the example password with the password for
-your local PostgreSQL role. Do not commit `.env`; it is ignored by Git. If the
-password contains URL-reserved characters, URL-encode them in the connection
-URL. The template contains placeholders only. Set `APP_ENVIRONMENT` to
-`development`, configure `JWT_SECRET` to a generated local secret, leave
-`JWT_ALGORITHM` as `HS256`, and set the desired
-`ACCESS_TOKEN_EXPIRE_MINUTES` (default 30).
+Configure `backend\.env` locally. Set `DATABASE_URL` to a PostgreSQL connection
+URL, `APP_ENVIRONMENT=development`, and `JWT_SECRET` to a unique random value.
+Do not commit `.env` or paste credentials into shared logs or scripts. In
+production, the application requires an explicitly configured JWT secret of
+at least 32 characters that is not a development placeholder.
 
-Generate a secret directly into the Windows clipboard without displaying it:
+Settings can also be supplied through environment variables. Relevant
+configuration includes:
+
+| Variable | Default | Limits / purpose |
+| --- | --- | --- |
+| `DATABASE_URL` | Local PostgreSQL URL | SQLAlchemy PostgreSQL connection |
+| `APP_ENVIRONMENT` | `development` | `development`, `test`, or `production` |
+| `JWT_SECRET` | Development-only fallback | Production must set a strong secret |
+| `JWT_ALGORITHM` | `HS256` | The supported signing algorithm |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | 1–1,440 minutes |
+| `LOGIN_RATE_LIMIT_ATTEMPTS` | `5` | 1–100 per username/window |
+| `LOGIN_RATE_LIMIT_WINDOW_SECONDS` | `900` | 1–86,400 seconds |
+| `PHOTO_MAX_UPLOAD_BYTES` | `10485760` | 1 byte–100 MiB per image |
+| `PHOTO_STORAGE_DIR` | `var/photo-storage` | Private local photo storage |
+
+The database engine is configured for PostgreSQL through `psycopg`. Importing
+the application does not itself open a database connection. Database-backed
+requests, `/health/db`, and online Alembic commands do connect.
+
+## Authentication and account provisioning
+
+Passwords are hashed with Argon2id. `POST /auth/login` accepts a username and
+password and returns a short-lived HS256 bearer token. Tokens include a user
+subject, issued-at and expiry times, and a unique token ID. `GET /auth/me`
+returns the authenticated user's safe profile. Protected routes require a
+valid token for an active account; account creation is not exposed as an API.
+
+Provision accounts interactively from the backend directory:
 
 ```powershell
-python -c "import secrets; print(secrets.token_urlsafe(48))" | Set-Clipboard
+python -m app.cli provision-user
 ```
 
-Paste the generated value into `JWT_SECRET` in your ignored `.env`; do not
-commit it. The
-development fallback secret exists only so local health checks and tests can
-start without extra setup. Production requires `APP_ENVIRONMENT=production`
-and an explicitly configured JWT secret of at least 32 characters that is not
-a development placeholder.
+The CLI normalizes usernames, enforces password length, rejects duplicate
+usernames, and provisions into one of two unique account slots. Database
+constraints enforce the maximum even with concurrent provisioning or direct
+database inserts. Existing account IDs, usernames, and password hashes are
+preserved when the slot migration is applied. The migration fails rather than
+discarding rows if more than two accounts already exist.
 
-## Configure PostgreSQL
+Login attempts default to five per normalized username in a 15-minute
+fixed window. PostgreSQL stores counters by HMAC digest of the username, not
+as plaintext usernames. Counters are shared across application processes and
+instances using the same database and JWT secret. A successful login resets
+that username's counter; expired counters are removed during later login
+attempts. Exceeding the limit returns a generic `429`; rate-limit database
+failures fail closed with a generic `503`. The limiter is per username, not
+per IP or a global request limit.
 
-Install and start PostgreSQL locally, then create a role and database and
-ensure the role in `DATABASE_URL` can connect to it. Connect from PowerShell:
+## Resource privacy
 
-```powershell
-psql -U postgres -h localhost -p 6666
+Memories, love notes and photos default to `private`. Owners can read and
+mutate their own resources. The other authenticated account can read a
+resource only when its owner explicitly marks it `shared`; sharing does not
+grant mutation or deletion rights. Missing and inaccessible resources use
+the same generic `404`. The API assigns ownership from the authenticated
+account and rejects client-supplied ownership fields.
+
+List endpoints support `limit` (1–100, default 20) and `offset` (0 or greater,
+default 0), return a total count, and use deterministic newest-first ordering.
+Memories, love notes, and photo metadata expose create, list, detail, update,
+and delete routes under `/memories`, `/love-notes`, and `/photos`. Photo
+metadata can be created without an image; image retrieval then returns `404`.
+
+## Memories timeline
+
+`GET /timeline` requires an active user's bearer token and combines the
+authenticated user's memories and photos with resources explicitly marked
+`shared` by the other account. Private resources owned by the other account
+are excluded by the database queries.
+
+The response contains `items`, `total`, `limit`, and `offset`. Each item has
+`type` (`memory` or `photo`), `id`, `timeline_date`, and `visibility`, plus
+metadata for that resource type. A memory uses `memory_date` when present
+(represented as midnight UTC); otherwise it uses `created_at`. Photos use
+`created_at`. Items are ordered by effective timeline date newest first; ties
+are ordered by type (`memory` before `photo`) and then descending resource ID.
+Pagination applies to the combined feed, not to each resource type separately.
+Storage keys and paths are never included.
+
+## Daily surprises
+
+`GET /surprises/today` requires a valid bearer token for an active account.
+It returns a deterministic surprise drawn from that user's accessible
+memories, photos, and love notes. The selection ranks eligible resources by
+type and ID, then uses a SHA-256-derived value from the authenticated user ID
+and current UTC date to choose one rank. The same user receives the same
+resource for a given date while the eligible collection remains unchanged;
+adding or deleting content can change that day's selection.
+
+The response contains the UTC `display_date` and either a `surprise` object
+with its type, existing `resource_id`, title, a preview of up to 280
+characters, and creation timestamp, or `surprise: null` when no eligible
+content exists. For example:
+
+```json
+{
+  "display_date": "2026-10-31",
+  "surprise": {
+    "type": "memory",
+    "resource_id": 12,
+    "title": "Our first trip",
+    "preview": "A weekend by the sea...",
+    "created_at": "2026-10-20T14:30:00Z"
+  }
+}
 ```
 
-Then run these statements at the `psql` prompt, replacing the placeholder
-password with a local password:
+Only resources owned by the caller or explicitly marked `shared` are eligible;
+another user's private content is filtered out in the database query. The API
+returns display metadata only and never includes photo storage keys or paths,
+password hashes, or tokens. This endpoint is stateless and reads current
+resource rows, so deleted resources cannot remain as stale surprise references.
+Selection is UTC-based, may repeat resources on consecutive days, and is not
+guaranteed to show every item before repeating. The existing
+`/daily_surprises` table is not used by this endpoint; delivery scheduling,
+automatic collages, and slideshows are not implemented.
 
-```sql
-CREATE ROLE loveworld_user WITH LOGIN PASSWORD 'replace-with-a-local-password';
-CREATE DATABASE loveworld;
-GRANT ALL PRIVILEGES ON DATABASE loveworld TO loveworld_user;
-```
+## Photo upload and storage
 
-Set `DATABASE_URL` in `.env` to the corresponding local connection string,
-using the psycopg driver:
+`POST /photos/upload` accepts a multipart `file` plus optional `caption` and
+`visibility`. Only JPEG, PNG and WebP static images are accepted. The server
+validates decoded image data rather than trusting MIME or filename, rejects
+animated or invalid files, and limits dimensions to 8,000 pixels per side and
+40 million pixels total. It applies EXIF orientation, re-encodes without EXIF
+metadata, and generates a WebP thumbnail no larger than 512 by 512 pixels.
 
-```text
-DATABASE_URL=postgresql+psycopg://loveworld_user:replace-me@localhost:6666/loveworld
-```
+An ASGI middleware rejects upload requests before multipart parsing when
+`Content-Length` exceeds the image limit plus 64 KiB. It also counts received
+bytes for streamed requests without that header. The image bytes are separately
+checked against `PHOTO_MAX_UPLOAD_BYTES`. Set the reverse proxy/ingress request
+body limit to at least that configured image size plus 64 KiB (10 MiB plus
+64 KiB by default). Proxy-side enforcement is necessary because a proxy may
+buffer or reject the request before it reaches the application.
 
-The application does not connect to PostgreSQL when imported. A database
-connection is opened only when a request uses the database session dependency,
-the database connectivity check is requested, or Alembic runs an online
-migration.
+Original images and thumbnails are stored outside public frontend directories
+under the configured private storage directory. `GET /photos/{id}/image` and
+`GET /photos/{id}/thumbnail` require authentication and apply the same
+owner/shared access checks as metadata. Responses use server-determined image
+types, private no-store caching, and `nosniff`.
 
-## Run tests and the backend
-
-From the `backend` directory, with the virtual environment activated:
-
-```powershell
-python -m pytest
-python -m uvicorn app.main:app --reload
-```
-
-The health endpoint is available at <http://127.0.0.1:8000/health>. Interactive
-API documentation is available at <http://127.0.0.1:8000/docs>.
-
-## Check database connectivity
-
-`GET /health` checks that the API is running and does not depend on PostgreSQL.
-`GET /health/db` separately runs `SELECT 1`: it returns `{"status":"ok"}` when
-the database is reachable, or a generic `503` response when it is unavailable.
-It does not return database URLs or exception details.
-
-With the server running, check PostgreSQL reachability from PowerShell:
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:8000/health/db
-```
+Filesystem storage is intended for development or a single-instance
+deployment. Production needs durable private storage accessible to every
+application instance and backups coordinated with the database. Database and
+filesystem writes are not atomic: cleanup is attempted after failures, but
+orphaned or missing files can require operational repair. Do not serve private
+photos from a public bucket or permanent public URLs.
 
 ## Database migrations
 
-Alembic reads the same `DATABASE_URL` setting as the application. Online
-migrations require `DATABASE_URL` to be explicitly set in the environment or
-`backend\.env`; the local fallback URL is not sufficient. Offline SQL
-generation does not connect to a database.
+The checked-in Alembic chain, in order, is:
 
-The initial schema migration creates the five model tables. Revision
-`ff850c33e28e` adds private-by-default visibility to memories, notes, and
-photos. To review migration status from the `backend` directory:
+1. `569ee1863153` — initial schema.
+2. `ff850c33e28e` — private/shared visibility constraints.
+3. `4f2c8a9d1b73` — database-enforced two-account slots.
+4. `91d5f3a7c2e6` — shared PostgreSQL login rate-limit table.
+
+The last two revisions are pending until applied to a database. The live
+database's current revision has not been verified by this repository audit.
+Before any online migration, confirm that `DATABASE_URL` targets the intended
+database and review the SQL. Never point development or tests at a production
+database.
+
+Check status and apply reviewed migrations from the backend directory:
 
 ```powershell
 python -m alembic current
-Get-ChildItem .\alembic\versions\*.py | ForEach-Object { Get-Content $_.FullName }
+python -m alembic heads
 python -m alembic upgrade head
 ```
 
-Do not run `upgrade head` until you have reviewed pending migrations and
-confirmed that they target the intended database. Future model modules must
-be imported from `app/db/models.py` so their tables are registered for
-autogenerate.
-
-## Authentication
-
-Passwords are hashed with Argon2id before they are stored. Authentication
-uses short-lived HS256 JWT bearer tokens signed with `JWT_SECRET`. Tokens
-contain the user ID as `sub`, plus issued-at, expiry, and a unique token ID.
-The default expiration is 30 minutes and can be changed with
-`ACCESS_TOKEN_EXPIRE_MINUTES` (1–1440 minutes). There are no refresh tokens.
-
-The login endpoint accepts JSON and never creates accounts. This PowerShell
-example prompts for the password without echoing it or placing it in command
-history:
+Offline SQL generation does not connect to a database:
 
 ```powershell
-$username = Read-Host "Username"
-$securePassword = Read-Host "Password" -AsSecureString
-$passwordPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePassword)
-try {
-    $password = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($passwordPointer)
-    $body = @{ username = $username; password = $password } | ConvertTo-Json
-    $token = (Invoke-RestMethod -Method Post `
-      -Uri http://127.0.0.1:8000/auth/login `
-      -ContentType "application/json" -Body $body).access_token
-}
-finally {
-    [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($passwordPointer)
-    Remove-Variable password, body, securePassword -ErrorAction SilentlyContinue
-}
+$env:DATABASE_URL = "postgresql+psycopg://user:password@localhost:5432/loveworld"
+python -m alembic upgrade head --sql
+Remove-Item Env:DATABASE_URL
 ```
 
-Avoid putting real passwords in shared scripts or source control. To fetch the
-safe current-user profile:
+Use a local throwaway database and never put actual credentials in shell
+history or shared logs.
 
-```powershell
-Invoke-RestMethod -Uri http://127.0.0.1:8000/auth/me `
-  -Headers @{ Authorization = "Bearer $token" }
-```
+## Tests and PostgreSQL migration verification
 
-Provision the two intended accounts separately from normal server startup.
-From `backend`, run `python -m app.cli provision-user`; enter each username
-and display name when prompted, then enter and confirm the password at the
-hidden prompts. Passwords must be 12–128 characters. The command hashes the
-password, rejects duplicate usernames, and refuses to create more than two
-users. It does not print passwords or hashes. Never provision real accounts
-in automated tests or commit their credentials.
-
-JWT authentication confirms identity and active account status. It does not
-by itself authorize access to private resources. The Memory API applies
-resource-level ownership and visibility checks; other resource endpoints must
-add their own authorization when implemented.
-
-## Resource ownership and privacy
-
-Memory, love-note, and photo rows each retain their existing owner foreign key
-(`created_by` or `uploaded_by`). A new `visibility` field distinguishes
-`private` from `shared`, defaults to `private`, and is constrained to those
-values. Existing rows are migrated as private. The reusable authorization
-helpers allow the owner to access their item; an explicitly shared item may be
-read by either authenticated user. Only the owner may mutate an item. Missing
-or inaccessible items return the same `404` response to avoid confirming that
-another user's private item exists. Resource creation must assign ownership
-from the authenticated user, not client-supplied JSON.
-
-Memory, LoveNote, and Photo metadata CRUD are described below. Image uploads
-and storage are not implemented. Authentication identifies the requesting
-user; ownership checks provide authorization and are applied by each resource
-endpoint.
-
-## Memory API
-
-The Memory API stores memory metadata and requires an active user's bearer
-token on every endpoint. Creation always assigns `created_by` from the token's
-authenticated user; `created_by` is not accepted in request bodies. New
-memories are private unless the owner explicitly requests `visibility:
-"shared"`. The owner may read, update, and delete their memory. Another user
-may read a shared memory, but cannot update or delete it. Missing and
-inaccessible memory IDs return the same generic 404 response.
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| POST | `/memories` | Create a memory owned by the authenticated user |
-| GET | `/memories` | List owned memories and explicitly shared memories |
-| GET | `/memories/{memory_id}` | Retrieve an accessible memory |
-| PATCH | `/memories/{memory_id}` | Update an owned memory |
-| DELETE | `/memories/{memory_id}` | Delete an owned memory |
-
-Example create request:
-
-```json
-{
-  "title": "Our first trip",
-  "description": "A favorite day together",
-  "memory_date": "2026-10-31",
-  "visibility": "private"
-}
-```
-
-Example create response:
-
-```json
-{
-  "id": 7,
-  "title": "Our first trip",
-  "description": "A favorite day together",
-  "memory_date": "2026-10-31",
-  "visibility": "private",
-  "created_by": 2,
-  "created_at": "2026-10-31T12:00:00Z",
-  "updated_at": "2026-10-31T12:00:00Z"
-}
-```
-
-`title` is required and cannot be blank; `description` is optional and limited
-to 5,000 characters; `memory_date` is an optional calendar date; visibility is
-`private` or `shared`. Unknown request fields are rejected, including attempts
-to supply an owner ID. PATCH changes only fields supplied in its body; an empty
-PATCH is rejected with `422`. `description` and `memory_date` may be set to
-`null` to clear them.
-
-The list endpoint accepts `limit` (1–100, default 20) and `offset` (0 or
-greater, default 0). Results are ordered newest first, with ID as a stable
-tie-breaker, and include `items`, `total`, `limit`, and `offset`. Responses
-include memory fields and timestamps, but no user credentials or internal
-database objects.
-
-Common status codes are `201` for creation, `200` for reads/updates, `204` for
-deletion, `401` for missing or invalid authentication, `404` for missing or
-inaccessible resources, `422` for invalid input, and a generic `503` if a
-database operation fails.
-
-Run all isolated tests from `backend` with:
+Most automated tests use isolated in-memory SQLite databases. They verify
+application behavior, not PostgreSQL migration execution. Run the complete
+suite from `backend`:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-## LoveNote API
+The opt-in PostgreSQL migration test creates a uniquely named temporary
+schema, runs the complete Alembic chain inside it, compares the migrated
+schema to SQLAlchemy metadata, and checks the account-slot constraints and
+login rate-limit table. It then drops only that temporary schema. The test
+refuses any database whose name is not exactly `loveworld_test` or prefixed
+with `loveworld_test_`.
 
-The LoveNote API stores text notes and requires an active user's bearer token
-on every endpoint. Creation assigns `created_by` from the authenticated user;
-ownership fields are not accepted in request bodies. Notes default to private.
-Owners can read, update, and delete their notes. Another authenticated user
-can read a note only when its visibility is `shared`; sharing never grants
-permission to update or delete it. Missing and inaccessible note IDs return
-the same generic `404` response.
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| POST | `/love-notes` | Create a note owned by the authenticated user |
-| GET | `/love-notes` | List owned notes and explicitly shared notes |
-| GET | `/love-notes/{note_id}` | Retrieve an accessible note |
-| PATCH | `/love-notes/{note_id}` | Update an owned note |
-| DELETE | `/love-notes/{note_id}` | Delete an owned note |
-
-Example create request:
-
-```json
-{
-  "title": "A little reminder",
-  "content": "I love you, always.",
-  "visibility": "private"
-}
-```
-
-Example create response:
-
-```json
-{
-  "id": 7,
-  "title": "A little reminder",
-  "content": "I love you, always.",
-  "visibility": "private",
-  "created_by": 2,
-  "created_at": "2026-10-31T12:00:00Z",
-  "updated_at": "2026-10-31T12:00:00Z"
-}
-```
-
-`content` is required, cannot be blank, and is limited to 10,000 characters.
-`title` is optional, cannot be blank when supplied, and is limited to 200
-characters. Visibility accepts only `private` or `shared`. Unknown request
-fields are rejected. PATCH changes only supplied fields; an empty PATCH is
-rejected with `422`. A note's optional title may be cleared with `null`, but
-content and visibility cannot be set to `null`.
-
-The list endpoint accepts `limit` (1–100, default 20) and `offset` (0 or
-greater, default 0). Results are ordered newest first, with ID as a stable
-tie-breaker, and include `items`, `total`, `limit`, and `offset`. Common status
-codes are `201` for creation, `200` for reads/updates, `204` for deletion,
-`401` for missing or invalid authentication, `404` for missing or inaccessible
-notes, `422` for invalid input, and a generic `503` if a database operation
-fails.
-
-Run all isolated tests from `backend` with:
+Create a dedicated, disposable PostgreSQL test database first. Set the
+connection URL via the `LOVEWORLD_TEST_DATABASE_URL` environment variable in
+your local shell or CI secret store; do not use `DATABASE_URL` for this test:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest -q
+$env:LOVEWORLD_TEST_DATABASE_URL = "postgresql+psycopg://test_user:password@localhost:5432/loveworld_test"
+.\.venv\Scripts\python.exe -m pytest -q tests\test_postgres_migrations.py
+Remove-Item Env:LOVEWORLD_TEST_DATABASE_URL
 ```
 
-While the server is running, inspect request and response schemas in Swagger
-at <http://127.0.0.1:8000/docs>. Photo upload/storage and authorization for
-daily surprises remain unimplemented.
+This integration test requires PostgreSQL connectivity and permission to
+create/drop schemas in that dedicated test database. Without the variable it
+is skipped. PostgreSQL migration behavior must not be inferred from SQLite
+tests.
 
-## Photo Metadata API
+## Errors, health and deployment
 
-The Photo API manages metadata only and requires an active user's bearer token
-on every endpoint. Creation assigns the photo owner from the authenticated
-user; `uploaded_by`, `created_by`, `owner_id`, and `storage_key` are not
-accepted in request bodies. New photos are private by default. Owners can
-read, update, and delete their photo metadata. Another authenticated user can
-read a photo only when its visibility is `shared`; sharing does not grant
-permission to update or delete it. Missing and inaccessible photo IDs return
-the same generic `404` response.
+`GET /health` checks application responsiveness; `GET /health/db` checks
+database connectivity. Database-backed API failures return generic responses.
+Server logs record a fixed operation label and exception class, not exception
+text, SQL, query parameters, credentials, request bodies, passwords, or tokens.
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| POST | `/photos` | Create photo metadata for the authenticated user |
-| GET | `/photos` | List owned photos and explicitly shared photos |
-| GET | `/photos/{photo_id}` | Retrieve accessible photo metadata |
-| PATCH | `/photos/{photo_id}` | Update owned photo metadata |
-| DELETE | `/photos/{photo_id}` | Delete owned photo metadata |
+Run the API locally with:
 
-Example create request:
-
-```json
-{
-  "original_filename": "our-day.jpg",
-  "caption": "A favorite moment",
-  "visibility": "private"
-}
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
 
-Example response:
-
-```json
-{
-  "id": 7,
-  "original_filename": "our-day.jpg",
-  "caption": "A favorite moment",
-  "visibility": "private",
-  "uploaded_by": 2,
-  "created_at": "2026-10-31T12:00:00Z"
-}
-```
-
-The internal `storage_key` is generated by the server and is not included in
-responses. `original_filename` is required, cannot be blank, and is limited to
-255 characters. `caption` is optional, cannot be blank when supplied, and is
-limited to 5,000 characters; it can be cleared with `null` in PATCH. Visibility
-accepts only `private` or `shared`. Unknown fields are rejected. PATCH changes
-only supplied fields and an empty PATCH is rejected with `422`.
-
-The list endpoint accepts `limit` (1–100, default 20) and `offset` (0 or
-greater, default 0). Results are ordered newest first, with ID as a stable
-tie-breaker, and include `items`, `total`, `limit`, and `offset`. Common status
-codes are `201` for creation, `200` for reads/updates, `204` for deletion,
-`401` for missing or invalid authentication, `404` for missing or inaccessible
-photos, `422` for invalid input, and a generic `503` if a database operation
-fails.
-
-These endpoints do not upload, serve, or delete image files. Deleting a photo
-removes only its metadata record; physical file storage and cleanup belong to
-the separate upload/storage milestone. Explore request and response schemas
-in Swagger at <http://127.0.0.1:8000/docs>.
-
-### Photo uploads and private storage
-
-`POST /photos/upload` accepts one multipart image file in the `file` field,
-plus optional `caption` and `visibility` form fields. It requires an active
-user bearer token. The owner is taken from that user, and visibility defaults
-to `private`. The original filename is retained only as display metadata; the
-server creates an opaque storage identifier. Neither storage identifiers nor
-filesystem paths are returned to clients.
-
-Supported inputs are static JPEG, PNG, and WebP images. The server validates
-the decoded image content rather than trusting its filename or declared MIME
-type. GIF, SVG, animated images, corrupt or truncated files, and images above
-8,000 pixels on either dimension or 40 million total pixels are rejected.
-Uploads are limited to 10 MiB by default. Set `PHOTO_MAX_UPLOAD_BYTES` to a
-positive integer up to 100 MiB to change the limit. Image orientation is
-applied and newly encoded files omit EXIF metadata; a WebP thumbnail no larger
-than 512 by 512 pixels is generated.
-
-`PHOTO_STORAGE_DIR` configures the private local storage directory. Its
-development default is `backend\var\photo-storage`, outside frontend public
-directories. The directory is not mounted as static content; access is
-available only through authenticated API endpoints:
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| POST | `/photos/upload` | Validate and store an image and thumbnail |
-| GET | `/photos/{photo_id}/image` | Retrieve the authorized original |
-| GET | `/photos/{photo_id}/thumbnail` | Retrieve the authorized thumbnail |
-
-Image and thumbnail requests use the same private/shared access checks as
-photo metadata. Owners can access private photos; other authenticated users
-can access shared photos only. Responses use server-determined image media
-types, `Cache-Control: private, no-store`, and `X-Content-Type-Options:
-nosniff`.
-
-The upload sequence writes the image files before committing metadata. If
-the database write fails, the server attempts to remove both files and logs
-a safe diagnostic if cleanup fails. These filesystem and database operations
-are not atomic. Deletion commits metadata removal first, then removes the
-original and thumbnail; if cleanup fails, the endpoint returns `503` and logs
-that physical cleanup may be incomplete. Missing files during deletion are
-safe to ignore. Metadata created through the metadata-only `POST /photos`
-endpoint has no image files and image retrieval for it returns `404`.
-
-Local filesystem storage is intended for development or single-instance
-deployments. Production deployments must configure durable private storage
-outside any web-served directory, ensure the storage is available to every
-application instance, and back it up alongside the database. Restoring database
-metadata without matching files (or files without metadata) can leave
-unavailable or orphaned images. Object storage can replace the local
-implementation behind the storage interface in a later deployment milestone;
-do not expose a public bucket or permanent public URLs for private images.
+Interactive API documentation is available at `/docs` in development.
+Production deployment must use a strong JWT secret, reviewed migrations,
+private durable photo storage, reverse-proxy upload limits, TLS, backups and
+appropriate access controls. The database-backed login limiter shares state
+only among instances using the same database and JWT secret; it is not an
+IP-based defense against distributed request flooding.

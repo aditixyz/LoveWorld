@@ -26,6 +26,7 @@ from app.auth.authorization import (
 )
 from app.auth.dependencies import get_current_user
 from app.core.config import Settings, get_settings
+from app.db.errors import log_database_error
 from app.db.models import Photo, User
 from app.db.session import get_db
 from app.schemas.photo import (
@@ -58,11 +59,16 @@ def get_photo_storage(settings: PhotoSettings) -> PhotoStorage:
 PhotoStorageDependency = Annotated[PhotoStorage, Depends(get_photo_storage)]
 
 
-def _database_unavailable(db: Session) -> HTTPException:
+def _database_unavailable(
+    db: Session,
+    operation: str,
+    error: SQLAlchemyError,
+) -> HTTPException:
+    log_database_error(logger, operation, error)
     try:
         db.rollback()
-    except SQLAlchemyError:
-        logger.error("Database rollback failed while handling a photo operation")
+    except SQLAlchemyError as rollback_error:
+        log_database_error(logger, f"{operation}.rollback", rollback_error)
     return HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         detail="Database operation unavailable",
@@ -210,8 +216,8 @@ async def upload_photo(
         db.flush()
         db.refresh(photo)
         db.commit()
-    except SQLAlchemyError:
-        database_error = _database_unavailable(db)
+    except SQLAlchemyError as error:
+        database_error = _database_unavailable(db, "photo.upload", error)
         try:
             storage.delete(storage_key)
         except PhotoStorageError:
@@ -241,8 +247,8 @@ def create_photo(
         db.add(photo)
         db.commit()
         db.refresh(photo)
-    except SQLAlchemyError:
-        raise _database_unavailable(db) from None
+    except SQLAlchemyError as error:
+        raise _database_unavailable(db, "photo.create", error) from None
     return PhotoResponse.model_validate(photo)
 
 
@@ -268,8 +274,8 @@ def list_photos(
             .limit(limit)
             .offset(offset)
         ).all()
-    except SQLAlchemyError:
-        raise _database_unavailable(db) from None
+    except SQLAlchemyError as error:
+        raise _database_unavailable(db, "photo.list", error) from None
     return PhotoPage(
         items=[PhotoResponse.model_validate(photo) for photo in photos],
         total=total or 0,
@@ -286,8 +292,8 @@ def get_photo(
 ) -> PhotoResponse:
     try:
         photo = require_resource_access(db.get(Photo, photo_id), user)
-    except SQLAlchemyError:
-        raise _database_unavailable(db) from None
+    except SQLAlchemyError as error:
+        raise _database_unavailable(db, "photo.read", error) from None
     return PhotoResponse.model_validate(photo)
 
 
@@ -300,8 +306,8 @@ def get_photo_image(
 ) -> Response:
     try:
         photo = require_resource_access(db.get(Photo, photo_id), user)
-    except SQLAlchemyError:
-        raise _database_unavailable(db) from None
+    except SQLAlchemyError as error:
+        raise _database_unavailable(db, "photo.image_read", error) from None
     try:
         stored_image = storage.read_original(photo.storage_key)
     except PhotoStorageError:
@@ -325,8 +331,8 @@ def get_photo_thumbnail(
 ) -> Response:
     try:
         photo = require_resource_access(db.get(Photo, photo_id), user)
-    except SQLAlchemyError:
-        raise _database_unavailable(db) from None
+    except SQLAlchemyError as error:
+        raise _database_unavailable(db, "photo.thumbnail_read", error) from None
     try:
         thumbnail = storage.read_thumbnail(photo.storage_key)
     except PhotoStorageError:
@@ -353,8 +359,8 @@ def update_photo(
             setattr(photo, field, value)
         db.commit()
         db.refresh(photo)
-    except SQLAlchemyError:
-        raise _database_unavailable(db) from None
+    except SQLAlchemyError as error:
+        raise _database_unavailable(db, "photo.update", error) from None
     return PhotoResponse.model_validate(photo)
 
 
@@ -374,8 +380,8 @@ def delete_photo(
         storage_key = photo.storage_key
         db.delete(photo)
         db.commit()
-    except SQLAlchemyError:
-        raise _database_unavailable(db) from None
+    except SQLAlchemyError as error:
+        raise _database_unavailable(db, "photo.delete", error) from None
     try:
         storage.delete(storage_key)
     except PhotoStorageError:

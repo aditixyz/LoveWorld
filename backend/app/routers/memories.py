@@ -12,6 +12,7 @@ from app.auth.authorization import (
     require_resource_owner,
 )
 from app.auth.dependencies import get_current_user
+from app.db.errors import log_database_error
 from app.db.models import Memory, User
 from app.db.session import get_db
 from app.schemas.memory import MemoryCreate, MemoryPage, MemoryResponse, MemoryUpdate
@@ -22,11 +23,16 @@ DatabaseSession = Annotated[Session, Depends(get_db)]
 AuthenticatedUser = Annotated[User, Depends(get_current_user)]
 
 
-def _database_unavailable(db: Session) -> HTTPException:
+def _database_unavailable(
+    db: Session,
+    operation: str,
+    error: SQLAlchemyError,
+) -> HTTPException:
+    log_database_error(logger, operation, error)
     try:
         db.rollback()
-    except SQLAlchemyError:
-        logger.error("Database rollback failed while handling a memory operation")
+    except SQLAlchemyError as rollback_error:
+        log_database_error(logger, f"{operation}.rollback", rollback_error)
     return HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         detail="Database operation unavailable",
@@ -51,8 +57,8 @@ def create_memory(
     try:
         db.commit()
         db.refresh(memory)
-    except SQLAlchemyError:
-        raise _database_unavailable(db) from None
+    except SQLAlchemyError as error:
+        raise _database_unavailable(db, "memory.create", error) from None
     return MemoryResponse.model_validate(memory)
 
 
@@ -78,8 +84,8 @@ def list_memories(
             .limit(limit)
             .offset(offset)
         ).all()
-    except SQLAlchemyError:
-        raise _database_unavailable(db) from None
+    except SQLAlchemyError as error:
+        raise _database_unavailable(db, "memory.list", error) from None
     return MemoryPage(
         items=[MemoryResponse.model_validate(memory) for memory in memories],
         total=total or 0,
@@ -97,8 +103,8 @@ def get_memory(
     try:
         memory = db.get(Memory, memory_id)
         memory = require_resource_access(memory, user)
-    except SQLAlchemyError:
-        raise _database_unavailable(db) from None
+    except SQLAlchemyError as error:
+        raise _database_unavailable(db, "memory.read", error) from None
     return MemoryResponse.model_validate(memory)
 
 
@@ -115,8 +121,8 @@ def update_memory(
             setattr(memory, field, value)
         db.commit()
         db.refresh(memory)
-    except SQLAlchemyError:
-        raise _database_unavailable(db) from None
+    except SQLAlchemyError as error:
+        raise _database_unavailable(db, "memory.update", error) from None
     return MemoryResponse.model_validate(memory)
 
 
@@ -134,6 +140,6 @@ def delete_memory(
         memory = require_resource_owner(db.get(Memory, memory_id), user)
         db.delete(memory)
         db.commit()
-    except SQLAlchemyError:
-        raise _database_unavailable(db) from None
+    except SQLAlchemyError as error:
+        raise _database_unavailable(db, "memory.delete", error) from None
     return Response(status_code=status.HTTP_204_NO_CONTENT)

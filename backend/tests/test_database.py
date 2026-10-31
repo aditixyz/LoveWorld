@@ -33,6 +33,7 @@ def test_connectivity_check_executes_select_one(monkeypatch) -> None:
 
 def test_connectivity_check_handles_connection_failure_safely(
     monkeypatch,
+    caplog,
 ) -> None:
     database_engine = Mock()
     database_engine.connect.side_effect = OperationalError(
@@ -43,3 +44,6 @@ def test_connectivity_check_handles_connection_failure_safely(
     monkeypatch.setattr(connectivity, "engine", database_engine)
 
     assert connectivity.check_database_connection() is False
+    assert "OperationalError" in caplog.text
+    assert "sensitive connection details" not in caplog.text
+    assert "postgresql" not in caplog.text.lower()

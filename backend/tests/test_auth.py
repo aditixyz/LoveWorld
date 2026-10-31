@@ -1,11 +1,13 @@
 import asyncio
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
+import time
 
 import jwt
 import pytest
 from httpx import ASGITransport, AsyncClient, Response
 from sqlalchemy import create_engine, func, select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -15,6 +17,7 @@ from app.db.base import Base
 from app.db.models import User
 from app.db.session import get_db
 from app.main import app
+from app.core.tokens import create_access_token
 
 
 def _test_settings() -> Settings:
@@ -67,6 +70,7 @@ def _add_user(
     active: bool = True,
 ) -> User:
     user = User(
+        account_slot=1,
         username=username,
         display_name="Test User",
         password_hash=hash_password(password),
@@ -148,6 +152,109 @@ def test_login_rejects_inactive_user(auth_context: Session) -> None:
 
     assert response.status_code == 401
     assert response.json()["detail"] == "Invalid username or password"
+
+
+def test_login_rate_limit_applies_to_known_and_unknown_usernames(
+    auth_context: Session,
+) -> None:
+    _add_user(auth_context)
+    settings = app.dependency_overrides[get_settings]()
+    settings.login_rate_limit_attempts = 2
+    attempts = [
+        _request(
+            "POST",
+            "/auth/login",
+            json={"username": "private-user", "password": "incorrect-password"},
+        )
+        for _ in range(2)
+    ]
+    limited = _request(
+        "POST",
+        "/auth/login",
+        json={"username": "PRIVATE-USER", "password": "incorrect-password"},
+    )
+    unknown_attempts = [
+        _request(
+            "POST",
+            "/auth/login",
+            json={"username": "unknown-user", "password": "incorrect-password"},
+        )
+        for _ in range(2)
+    ]
+    unknown_limited = _request(
+        "POST",
+        "/auth/login",
+        json={"username": "UNKNOWN-USER", "password": "incorrect-password"},
+    )
+
+    assert [response.status_code for response in attempts] == [401, 401]
+    assert all(
+        response.json()["detail"] == "Invalid username or password"
+        for response in attempts
+    )
+    assert limited.status_code == 429
+    assert limited.json()["detail"] == "Too many login attempts. Try again later."
+    assert limited.headers["retry-after"] == "900"
+    assert [response.status_code for response in unknown_attempts] == [401, 401]
+    assert unknown_limited.status_code == 429
+    assert unknown_limited.json() == limited.json()
+    assert unknown_limited.headers["retry-after"] == limited.headers["retry-after"]
+
+
+def test_successful_login_resets_failed_attempts(auth_context: Session) -> None:
+    user = _add_user(auth_context)
+    settings = app.dependency_overrides[get_settings]()
+    settings.login_rate_limit_attempts = 2
+
+    failed = _request(
+        "POST",
+        "/auth/login",
+        json={"username": user.username, "password": "incorrect-password"},
+    )
+    successful = _request(
+        "POST",
+        "/auth/login",
+        json={"username": user.username, "password": "a-secure-test-password"},
+    )
+    failed_again = _request(
+        "POST",
+        "/auth/login",
+        json={"username": user.username, "password": "incorrect-password"},
+    )
+
+    assert failed.status_code == 401
+    assert successful.status_code == 200
+    assert failed_again.status_code == 401
+
+
+def test_login_rate_limit_expires_after_configured_window(
+    auth_context: Session,
+) -> None:
+    user = _add_user(auth_context)
+    settings = app.dependency_overrides[get_settings]()
+    settings.login_rate_limit_attempts = 1
+    settings.login_rate_limit_window_seconds = 1
+
+    failed = _request(
+        "POST",
+        "/auth/login",
+        json={"username": user.username, "password": "incorrect-password"},
+    )
+    limited = _request(
+        "POST",
+        "/auth/login",
+        json={"username": user.username, "password": "incorrect-password"},
+    )
+    time.sleep(1.05)
+    successful = _request(
+        "POST",
+        "/auth/login",
+        json={"username": user.username, "password": "a-secure-test-password"},
+    )
+
+    assert failed.status_code == 401
+    assert limited.status_code == 429
+    assert successful.status_code == 200
 
 
 @pytest.mark.parametrize(
@@ -237,6 +344,38 @@ def test_current_user_rejects_expired_token(auth_context: Session) -> None:
     )
 
     assert response.status_code == 401
+
+
+def test_current_user_database_failure_is_generic_and_logged_safely(
+    auth_context: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    user = _add_user(auth_context)
+    settings = app.dependency_overrides[get_settings]()
+    token = create_access_token(user.id, settings)
+
+    def fail_get(*args: object, **kwargs: object) -> None:
+        raise OperationalError(
+            "SELECT password_hash FROM users",
+            {},
+            Exception("private database connection password"),
+        )
+
+    monkeypatch.setattr(auth_context, "get", fail_get)
+    response = _request(
+        "GET",
+        "/auth/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Authentication temporarily unavailable"}
+    assert "OperationalError" in caplog.text
+    assert "auth.current_user_lookup" in caplog.text
+    assert "password_hash" not in caplog.text
+    assert "private database connection password" not in caplog.text
+    assert "SELECT" not in response.text
 
 
 def test_provisioned_user_stores_only_password_hash(

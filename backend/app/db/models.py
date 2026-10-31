@@ -39,9 +39,17 @@ class TimestampMixin:
 
 class User(TimestampMixin, Base):
     __tablename__ = "users"
-    __table_args__ = (Index("ix_users_username", "username", unique=True),)
+    __table_args__ = (
+        CheckConstraint(
+            "account_slot IN (1, 2)",
+            name="ck_users_account_slot",
+        ),
+        UniqueConstraint("account_slot", name="uq_users_account_slot"),
+        Index("ix_users_username", "username", unique=True),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    account_slot: Mapped[int] = mapped_column(Integer, nullable=False)
     username: Mapped[str] = mapped_column(String(50), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     display_name: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -50,6 +58,24 @@ class User(TimestampMixin, Base):
         server_default="true",
         nullable=False,
     )
+
+
+class LoginRateLimit(Base):
+    __tablename__ = "login_rate_limits"
+    __table_args__ = (
+        CheckConstraint(
+            "attempts > 0",
+            name="ck_login_rate_limits_attempts",
+        ),
+        Index("ix_login_rate_limits_window_started_at", "window_started_at"),
+    )
+
+    key_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    window_started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
 class Memory(TimestampMixin, Base):
