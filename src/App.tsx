@@ -1,4 +1,3 @@
-
 import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import html2canvas from 'html2canvas'
 import './App.css'
@@ -293,15 +292,12 @@ function App() {
   const [surpriseIndex] = useState<number>(() => getTodaySurpriseIndex())
   const [isSurpriseOpen, setIsSurpriseOpen] = useState(false)
 
-  // Love Jar
   const [currentLoveReason, setCurrentLoveReason] = useState<number | null>(null)
   const [usedLoveReasons, setUsedLoveReasons] = useState<number[]>([])
 
-  // Miss Me feature
   const [missMeType, setMissMeType] = useState<'kiss' | 'hug' | null>(null)
   const [showMissMe, setShowMissMe] = useState(false)
 
-  // Website background slideshow
   const [backgroundIndex, setBackgroundIndex] = useState(0)
   const [nextBackgroundIndex, setNextBackgroundIndex] = useState(1)
   const [showNextBackground, setShowNextBackground] = useState(false)
@@ -320,7 +316,7 @@ function App() {
   const memoryCardRef = useRef<HTMLDivElement>(null)
   const todaySurprise = dailySurprises[surpriseIndex]
 
-  // Pick a random love reason without repeating until all are shown
+  // Love Jar: no repeat until all reasons have been shown
   const pickLoveReason = () => {
     let availableReasons = loveReasons
       .map((_, index) => index)
@@ -349,7 +345,7 @@ function App() {
     setShowMissMe(true)
   }
 
-  // Background slideshow: change image every 5 seconds
+  // Background slideshow
   useEffect(() => {
     const interval = window.setInterval(() => {
       const nextIndex = (backgroundIndex + 1) % backgroundImages.length
@@ -368,6 +364,7 @@ function App() {
     }
   }, [backgroundIndex])
 
+  // Close popups with Escape
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -383,6 +380,7 @@ function App() {
     }
   }, [])
 
+  // Clean up uploaded photo URL
   useEffect(() => {
     return () => {
       if (memoryPhoto) {
@@ -390,6 +388,102 @@ function App() {
       }
     }
   }, [memoryPhoto])
+
+  // MAGICAL TOUCH 1: Scroll reveal
+  useEffect(() => {
+    const reducedMotion = window.matchMedia(
+      '(prefers-reduced-motion: reduce)',
+    ).matches
+
+    if (reducedMotion || !('IntersectionObserver' in window)) return
+
+    const revealElements = document.querySelectorAll<HTMLElement>(
+      [
+        '.section-heading',
+        '.dashboard-card',
+        '.floating-memory-card',
+        '.surprise-container',
+        '.love-jar-container',
+        '.miss-me-container',
+        '.studio-layout',
+        '.profile-card',
+        '.memory-card',
+        '.gallery-item',
+        '.note-card',
+      ].join(','),
+    )
+
+    revealElements.forEach((element) => {
+      element.classList.add('magic-reveal')
+    })
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('magic-visible')
+            observer.unobserve(entry.target)
+          }
+        })
+      },
+      {
+        threshold: 0.12,
+        rootMargin: '0px 0px -35px 0px',
+      },
+    )
+
+    revealElements.forEach((element) => observer.observe(element))
+
+    return () => observer.disconnect()
+  }, [])
+
+  // MAGICAL TOUCH 2: Tiny floating hearts on button/link clicks
+  useEffect(() => {
+    const reducedMotion = window.matchMedia(
+      '(prefers-reduced-motion: reduce)',
+    ).matches
+
+    if (reducedMotion) return
+
+    const handleMagicClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+      const clickable = target.closest('button, a')
+
+      if (!clickable || clickable.hasAttribute('disabled')) return
+      if (clickable.classList.contains('miss-me-close')) return
+      if (clickable.classList.contains('lightbox-close')) return
+
+      const symbols = ['♡', '♥', '✦', '✨']
+      const colors = ['#ed79a8', '#d94f88', '#c18acb', '#f2b6c9']
+
+      for (let i = 0; i < 5; i++) {
+        const particle = document.createElement('span')
+        particle.className = 'magic-click-particle'
+        particle.textContent = symbols[Math.floor(Math.random() * symbols.length)]
+
+        const angle = (Math.PI * 2 * i) / 5
+        const distance = 35 + Math.random() * 45
+
+        particle.style.left = `${event.clientX}px`
+        particle.style.top = `${event.clientY}px`
+        particle.style.setProperty('--magic-x', `${Math.cos(angle) * distance}px`)
+        particle.style.setProperty('--magic-y', `${Math.sin(angle) * distance}px`)
+        particle.style.color = colors[Math.floor(Math.random() * colors.length)]
+
+        document.body.appendChild(particle)
+
+        window.setTimeout(() => {
+          particle.remove()
+        }, 850)
+      }
+    }
+
+    document.addEventListener('click', handleMagicClick)
+
+    return () => {
+      document.removeEventListener('click', handleMagicClick)
+    }
+  }, [])
 
   const handleMemoryPhoto = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -439,6 +533,7 @@ function App() {
   return (
     <div className="loveworld">
       <style>{`
+        /* MISS ME FEATURE */
         .miss-me-section {
           padding: 90px 7%;
           text-align: center;
@@ -579,6 +674,165 @@ function App() {
           .miss-me-section { padding: 65px 5%; }
           .miss-me-container { padding: 35px 18px; }
           .miss-me-popup h3 { font-size: 22px; }
+        }
+
+        /* MAGICAL TOUCH 3: SCROLL REVEAL */
+        .magic-reveal {
+          opacity: 0;
+          transform: translateY(28px);
+          transition:
+            opacity .75s ease,
+            transform .75s cubic-bezier(.2,.7,.2,1);
+        }
+
+        .magic-reveal.magic-visible {
+          opacity: 1;
+          transform: translateY(0);
+        }
+
+        /* MAGICAL TOUCH 4: DASHBOARD HOVER */
+        .dashboard-card {
+          transition:
+            transform .35s ease,
+            box-shadow .35s ease,
+            border-color .35s ease;
+          overflow: hidden;
+        }
+
+        .dashboard-card:not(:disabled):hover {
+          transform: translateY(-9px) scale(1.025);
+          box-shadow:
+            0 18px 38px rgba(195, 91, 137, .2),
+            0 0 18px rgba(255, 190, 220, .35);
+          border-color: rgba(230, 120, 165, .55);
+        }
+
+        .dashboard-card:not(:disabled):hover .dashboard-icon {
+          display: inline-block;
+          animation: magicIconBounce .55s ease;
+        }
+
+        @keyframes magicIconBounce {
+          0%,100% { transform: translateY(0) scale(1); }
+          35% { transform: translateY(-7px) scale(1.16); }
+          65% { transform: translateY(2px) scale(.96); }
+        }
+
+        /* MAGICAL TOUCH 5: GALLERY ZOOM */
+        .gallery-item {
+          overflow: hidden;
+        }
+
+        .gallery-item img,
+        .floating-memory-card img,
+        .memory-card img,
+        .profile-photo {
+          transition: transform .65s cubic-bezier(.2,.7,.2,1);
+        }
+
+        .gallery-item:hover img {
+          transform: scale(1.09);
+        }
+
+        .floating-memory-card:hover img {
+          transform: scale(1.06) rotate(1deg);
+        }
+
+        /* MAGICAL TOUCH 6: CARD LIFT */
+        .memory-card,
+        .profile-card,
+        .note-card,
+        .floating-memory-card {
+          transition:
+            transform .35s ease,
+            box-shadow .35s ease;
+        }
+
+        .memory-card:hover,
+        .profile-card:hover,
+        .note-card:hover {
+          transform: translateY(-8px);
+          box-shadow: 0 18px 40px rgba(120, 50, 80, .16);
+        }
+
+        .floating-memory-card:hover {
+          transform: translateY(-8px) rotate(0deg) scale(1.025);
+          box-shadow: 0 18px 38px rgba(120, 50, 80, .2);
+        }
+
+        /* MAGICAL TOUCH 7: HEADING SHIMMER */
+        .section-heading h2 {
+          background: linear-gradient(
+            110deg,
+            #80435f 20%,
+            #d76f9c 40%,
+            #f2b4ce 50%,
+            #d76f9c 60%,
+            #80435f 80%
+          );
+          background-size: 220% auto;
+          background-clip: text;
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          animation: magicHeadingShimmer 6s linear infinite;
+        }
+
+        @keyframes magicHeadingShimmer {
+          to { background-position: 220% center; }
+        }
+
+        /* MAGICAL TOUCH 8: FLOATING CLICK HEARTS */
+        .magic-click-particle {
+          position: fixed;
+          z-index: 20000;
+          pointer-events: none;
+          font-size: 17px;
+          line-height: 1;
+          animation: magicParticleFloat .85s ease-out forwards;
+          text-shadow: 0 2px 8px rgba(220, 90, 145, .2);
+        }
+
+        @keyframes magicParticleFloat {
+          0% {
+            opacity: 0;
+            transform: translate(-50%, -50%) scale(.3) rotate(-20deg);
+          }
+          20% {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1.2) rotate(10deg);
+          }
+          100% {
+            opacity: 0;
+            transform:
+              translate(
+                calc(-50% + var(--magic-x)),
+                calc(-50% + var(--magic-y))
+              )
+              scale(.5)
+              rotate(35deg);
+          }
+        }
+
+        /* Smooth section navigation */
+        html {
+          scroll-behavior: smooth;
+        }
+
+        /* ACCESSIBILITY: RESPECT REDUCED MOTION */
+        @media (prefers-reduced-motion: reduce) {
+          *,
+          *::before,
+          *::after {
+            scroll-behavior: auto !important;
+            animation-duration: .01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: .01ms !important;
+          }
+
+          .magic-reveal {
+            opacity: 1;
+            transform: none;
+          }
         }
       `}</style>
 
