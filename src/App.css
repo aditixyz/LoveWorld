@@ -1551,3 +1551,153 @@
     padding: 23px 20px 25px;
   }
 }
+
+/* ==========================================
+   LOVEWORLD - FULL WEBSITE BACKGROUND SLIDESHOW
+========================================== */
+
+.loveworld {
+  position: relative;
+  isolation: isolate;
+  min-height: 100vh;
+  background: transparent;
+  color: #713b53;
+}
+
+/* Background image layers */
+
+.website-background {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  filter: blur(0.5px);
+  transform: scale(1.02);
+  transition: opacity 1.5s ease-in-out;
+  will-change: opacity;
+}
+
+.website-background-current {
+  opacity: 1;
+}
+
+.website-background-next {
+  opacity: 0;
+}
+
+.website-background-visible {
+  opacity: 1;
+}
+
+/* Soft pink overlay */
+
+.loveworld::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: rgba(255, 240, 245, 0.18);
+}
+
+/* Keep website content above background */
+
+.loveworld > .navbar,
+.loveworld > main {
+  position: relative;
+  z-index: 1;
+}
+
+/* Transparent sections to reveal slideshow */
+
+.hero-section,
+.dashboard-section,
+.daily-surprise-section,
+.memory-studio-section,
+.profiles-section,
+.memories-section,
+.gallery-section,
+.notes-section {
+  background-color: rgba(255, 250, 252, 0.48);
+}
+
+/* Individual section backgrounds */
+
+.dashboard-section {
+  background: rgba(255, 247, 250, 0.55);
+}
+
+.daily-surprise-section {
+  background: rgba(255, 247, 250, 0.50);
+}
+
+.memory-studio-section {
+  background: rgba(255, 250, 252, 0.55);
+}
+
+.profiles-section,
+.memories-section,
+.notes-section {
+  background: rgba(255, 250, 253, 0.55);
+}
+
+.gallery-section {
+  background: rgba(255, 240, 245, 0.52);
+}
+
+/* Navbar remains readable */
+
+.navbar {
+  position: relative;
+  z-index: 5;
+  background: rgba(255, 250, 252, 0.82);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+/* Cards retain their readability */
+
+.dashboard-card,
+.memory-card,
+.profile-card,
+.studio-editor,
+.surprise-container {
+  background-color: rgba(255, 255, 255, 0.91);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+/* Footer */
+
+.footer {
+  position: relative;
+  z-index: 1;
+  background: rgba(252, 229, 237, 0.82);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* Lightbox must remain above everything */
+
+.lightbox {
+  z-index: 9999;
+}
+
+/* Accessibility */
+
+@media (prefers-reduced-motion: reduce) {
+  .website-background {
+    transition: none;
+  }
+}
+
+/* Mobile background positioning */
+
+@media (max-width: 700px) {
+  .website-background {
+    background-position: center center;
+  }
+}

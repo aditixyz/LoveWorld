@@ -1,6 +1,15 @@
+
 import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import html2canvas from 'html2canvas'
 import './App.css'
+
+const backgroundImages = [
+  'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?w=1920',
+  'https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=1920',
+  'https://images.unsplash.com/photo-1470252649378-9c29740c9fa8?w=1920',
+  'https://images.unsplash.com/photo-1511988617509-a57c8a288659?w=1920',
+  'https://images.unsplash.com/photo-1518895949257-7621c3c786d7?w=1920',
+]
 
 const dailySurprises = [
   {
@@ -157,6 +166,11 @@ function App() {
   const [surpriseIndex] = useState<number>(() => getTodaySurpriseIndex())
   const [isSurpriseOpen, setIsSurpriseOpen] = useState(false)
 
+  // Website background slideshow
+  const [backgroundIndex, setBackgroundIndex] = useState(0)
+  const [nextBackgroundIndex, setNextBackgroundIndex] = useState(1)
+  const [showNextBackground, setShowNextBackground] = useState(false)
+
   const [memoryTitle, setMemoryTitle] = useState('Our Beautiful Memory')
   const [memoryDate, setMemoryDate] = useState(
     new Date().toISOString().slice(0, 10),
@@ -170,6 +184,25 @@ function App() {
 
   const memoryCardRef = useRef<HTMLDivElement>(null)
   const todaySurprise = dailySurprises[surpriseIndex]
+
+  // Background slideshow: change image every 5 seconds
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      const nextIndex = (backgroundIndex + 1) % backgroundImages.length
+
+      setNextBackgroundIndex(nextIndex)
+      setShowNextBackground(true)
+
+      window.setTimeout(() => {
+        setBackgroundIndex(nextIndex)
+        setShowNextBackground(false)
+      }, 1500)
+    }, 5000)
+
+    return () => {
+      window.clearInterval(interval)
+    }
+  }, [backgroundIndex])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -240,6 +273,25 @@ function App() {
 
   return (
     <div className="loveworld">
+      {/* Full website background slideshow */}
+      <div
+        className="website-background website-background-current"
+        aria-hidden="true"
+        style={{
+          backgroundImage: `url("${backgroundImages[backgroundIndex]}")`,
+        }}
+      />
+
+      <div
+        className={`website-background website-background-next ${
+          showNextBackground ? 'website-background-visible' : ''
+        }`}
+        aria-hidden="true"
+        style={{
+          backgroundImage: `url("${backgroundImages[nextBackgroundIndex]}")`,
+        }}
+      />
+
       <nav className="navbar">
         <a href="#home" className="logo">
           <span className="logo-heart">♥</span>
