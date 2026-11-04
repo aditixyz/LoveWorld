@@ -3,11 +3,14 @@ import html2canvas from 'html2canvas'
 import './App.css'
 
 const backgroundImages = [
-  'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?w=1920',
-  'https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=1920',
-  'https://images.unsplash.com/photo-1470252649378-9c29740c9fa8?w=1920',
-  'https://images.unsplash.com/photo-1511988617509-a57c8a288659?w=1920',
-  'https://images.unsplash.com/photo-1518895949257-7621c3c786d7?w=1920',
+  '/our-photos/couple-1.jpg',
+  '/our-photos/couple-2.jpg',
+  '/our-photos/couple-3.jpg',
+  '/our-photos/couple-4.jpg',
+  '/our-photos/couple-5.jpg',
+  '/our-photos/couple-6.jpg',
+  '/our-photos/couple-7.jpg',
+  '/our-photos/couple-8.jpg',
 ]
 
 const dailySurprises = [
@@ -16,7 +19,7 @@ const dailySurprises = [
     message:
       'No matter how ordinary the day is, it becomes special just because you are a part of it. Thank you for being my favourite hello and my safest place. I would choose you in every lifetime. ♡',
     image:
-      'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?w=900',
+      '/our-photos/couple-1.jpg',
     caption: 'A little piece of our forever',
   },
   {
@@ -24,7 +27,7 @@ const dailySurprises = [
     message:
       'I hope you never forget how special you are to me. Your smile makes my day brighter, your presence makes everything better, and loving you is my favourite thing.',
     image:
-      'https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=900',
+      '/our-photos/couple-2.jpg',
     caption: 'Sending you flowers and love',
   },
   {
@@ -32,7 +35,7 @@ const dailySurprises = [
     message:
       'It is not about where we go or what we do. It is about being together. Even the smallest moments with you become memories I want to keep forever.',
     image:
-      'https://images.unsplash.com/photo-1470252649378-9c29740c9fa8?w=900',
+      '/our-photos/couple-3.jpg',
     caption: 'Every sunset is prettier with you',
   },
   {
@@ -40,7 +43,7 @@ const dailySurprises = [
     message:
       'If I could make one wish today, it would be for us to keep making silly memories, laughing at little things, and choosing each other every single day.',
     image:
-      'https://images.unsplash.com/photo-1511988617509-a57c8a288659?w=900',
+      '/our-photos/couple-4.jpg',
     caption: 'Here is to more beautiful days',
   },
 ]
@@ -156,29 +159,53 @@ const memoryThemes = [
 
 const galleryImages = [
   {
-    src: 'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?w=700',
-    alt: 'Couple holding hands',
+    src: '/our-photos/couple-1.jpg',
+    alt: 'Couple cuddling together',
     className: 'gallery-tall',
-    caption: 'A little piece of forever',
+    caption: 'A sleepy little moment',
   },
   {
-    src: 'https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=500',
-    alt: 'Beautiful flowers',
+    src: '/our-photos/couple-2.jpg',
+    alt: 'A cozy couple selfie',
     className: '',
-    caption: 'Flowers for my favourite person',
+    caption: 'My favourite company',
   },
   {
-    src: 'https://images.unsplash.com/photo-1511988617509-a57c8a288659?w=500',
-    alt: 'Happy moments',
+    src: '/our-photos/couple-3.jpg',
+    alt: 'Aditi kissing Sittu on the cheek',
     className: '',
-    caption: 'The happiest little moments',
+    caption: 'A kiss to remember',
   },
   {
-    src: 'https://images.unsplash.com/photo-1470252649378-9c29740c9fa8?w=700',
-    alt: 'Beautiful sunset',
+    src: '/our-photos/couple-4.jpg',
+    alt: 'Couple sitting together in a car',
     className: 'gallery-wide',
-    caption: 'Sunsets and sweet memories',
+    caption: 'Together on our little ride',
   },
+  {
+    src: '/our-photos/couple-5.jpg',
+    alt: 'Couple standing together at a light installation',
+    className: '',
+    caption: 'A colourful little adventure',
+  },
+  {
+    src: '/our-photos/couple-6.jpg',
+    alt: 'Couple taking a restaurant selfie',
+    className: '',
+    caption: 'Dinner dates & smiles',
+  },
+  {
+    src: '/our-photos/couple-7.jpg',
+    alt: 'A close-up couple selfie',
+    className: 'gallery-tall',
+    caption: 'Always close to you',
+  },
+  {
+    src: '/our-photos/couple-8.jpg',
+    alt: 'Couple sitting together at a cafe',
+    className: 'gallery-wide',
+    caption: 'Coffee, comfort & us',
+  }
 ]
 
 const dashboardFeatures = [
@@ -504,7 +531,7 @@ function App() {
   }
 
   const downloadMemoryCard = async () => {
-    if (!memoryCardRef.current) return
+        if (!memoryCardRef.current) return
 
     try {
       setDownloadError('')
@@ -904,7 +931,7 @@ function App() {
             <div className="hero-collage">
               <div className="photo-frame main-photo">
                 <img
-                  src="https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?w=700"
+                  src="/our-photos/couple-5.jpg"
                   alt="Romantic couple holding hands"
                 />
                 <span>our favourite chapter ♡</span>
@@ -912,7 +939,7 @@ function App() {
 
               <div className="photo-frame small-photo">
                 <img
-                  src="https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=400"
+                  src="/our-photos/couple-6.jpg"
                   alt="Beautiful flowers"
                 />
               </div>
@@ -1037,8 +1064,7 @@ function App() {
                 <p className="surprise-message">
                   {todaySurprise.message}
                 </p>
-
-                <span className="surprise-signature">
+                                <span className="surprise-signature">
                   Made with love, just for you ♡
                 </span>
 
@@ -1327,8 +1353,8 @@ function App() {
               <div className="profile-photo-wrap">
                 <img
                   className="profile-photo"
-                  src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=700&auto=format&fit=crop"
-                  alt="Sample portrait for my profile"
+                  src="/our-photos/aditi-profile.jpeg"
+                  alt="Aditi's real profile photo"
                   loading="lazy"
                 />
                 <span className="profile-photo-heart">♡</span>
@@ -1354,8 +1380,8 @@ function App() {
               <div className="profile-photo-wrap">
                 <img
                   className="profile-photo"
-                  src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=700&auto=format&fit=crop"
-                  alt="Sample portrait for Sittu's profile"
+                  src="/our-photos/sittu-profile (2).jpeg"
+                  alt="Sittu's real profile photo"
                   loading="lazy"
                 />
                 <span className="profile-photo-heart">♡</span>
@@ -1379,8 +1405,8 @@ function App() {
           </div>
 
           <p className="profiles-note">
-            These are sample photos for now — we can replace them with your own
-            pictures later. ♡
+            Two real hearts, one beautiful story. ♡
+            
           </p>
         </section>
 
@@ -1394,35 +1420,26 @@ function App() {
 
           <div className="memory-grid">
             <article className="memory-card">
-              <img
-                src="https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?w=600"
-                alt="Couple holding hands"
-              />
+              <img src="/our-photos/couple-3.jpg" alt="Aditi giving Sittu a kiss" loading="lazy" />
               <div className="memory-info">
                 <span>♡ A special moment</span>
-                <h3>Our Beginning</h3>
+                <h3>A Little Kiss</h3>
               </div>
             </article>
 
             <article className="memory-card">
-              <img
-                src="https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=600"
-                alt="Beautiful flowers"
-              />
+              <img src="/our-photos/couple-5.jpg" alt="Aditi and Sittu at a colourful light installation" loading="lazy" />
               <div className="memory-info">
-                <span>♡ Little things</span>
-                <h3>Flowers & Happiness</h3>
+                <span>♡ An adventure together</span>
+                <h3>Our Colourful Day</h3>
               </div>
             </article>
 
             <article className="memory-card">
-              <img
-                src="https://images.unsplash.com/photo-1511988617509-a57c8a288659?w=600"
-                alt="Friends celebrating together"
-              />
+              <img src="/our-photos/couple-8.jpg" alt="Aditi and Sittu at a cafe" loading="lazy" />
               <div className="memory-info">
                 <span>♡ Forever favourite</span>
-                <h3>Beautiful Days</h3>
+                <h3>Coffee & Us</h3>
               </div>
             </article>
           </div>
@@ -1452,7 +1469,7 @@ function App() {
                   }
                 }}
               >
-                <img src={photo.src} alt={photo.alt} />
+                <img src={photo.src} alt={photo.alt} loading="lazy" />
                 <span className="gallery-heart">♥</span>
               </div>
             ))}
