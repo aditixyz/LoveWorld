@@ -1927,3 +1927,275 @@ section {
     right: 4%;
   }
 }
+/* ===== ALL PHOTO FRAMES: FULL IMAGE FILL ===== */
+
+.photo-frame img,
+.gallery-item img,
+.floating-memory-card img,
+.memory-card img,
+.surprise-photo-frame img,
+.profile-photo,
+.preview-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
+/* Frame ke bahar photo nahi niklegi */
+.photo-frame,
+.gallery-item,
+.floating-memory-card,
+.memory-card,
+.surprise-photo-frame,
+.profile-photo-wrap {
+  overflow: hidden;
+}
+
+/* Memory cards */
+.memory-card img {
+  height: 260px;
+  display: block;
+}
+
+/* Surprise photo */
+.surprise-photo-frame img {
+  display: block;
+  height: 250px;
+}
+
+/* ===== LIGHTBOX: KEEP ORIGINAL PHOTO SHAPE ===== */
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(25, 10, 18, 0.92);
+}
+
+.lightbox > img {
+  display: block;
+  width: auto !important;
+  height: auto !important;
+  max-width: 94vw;
+  max-height: 88vh;
+  object-fit: contain;
+  object-position: center;
+  border-radius: 12px;
+}
+
+@media (max-width: 600px) {
+  .lightbox > img {
+    max-width: 96vw;
+    max-height: 85vh;
+  }
+}
+
+/* ==================================================
+   LOVEWORLD - FINAL PHOTO ALIGNMENT FIX
+   Equal gallery frames + proper photo orientation
+   ================================================== */
+
+/* 1. MAIN GALLERY: ALL PHOTOS SAME SQUARE RATIO */
+
+.loveworld .gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-rows: auto;
+  align-items: stretch;
+  gap: 20px;
+}
+
+.loveworld .gallery-grid .gallery-item {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: auto;
+  min-width: 0;
+  aspect-ratio: 1 / 1;
+  grid-column: auto !important;
+  grid-row: auto !important;
+  overflow: hidden;
+  border-radius: 18px;
+}
+
+.loveworld .gallery-grid .gallery-item img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  object-position: center;
+  transition: transform 0.5s ease;
+}
+
+.loveworld .gallery-grid .gallery-item:hover img {
+  transform: scale(1.07);
+}
+
+/* Remove old tall and wide uneven layouts */
+.loveworld .gallery-grid .gallery-tall,
+.loveworld .gallery-grid .gallery-wide {
+  grid-column: auto !important;
+  grid-row: auto !important;
+}
+
+/* 2. MEMORY CARDS: EQUAL PHOTO HEIGHTS */
+
+.loveworld .memory-grid {
+  align-items: stretch;
+}
+
+.loveworld .memory-card {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.loveworld .memory-card img {
+  display: block;
+  width: 100%;
+  height: 260px;
+  object-fit: cover;
+  object-position: center;
+}
+
+/* 3. HERO PHOTO FRAMES */
+
+.loveworld .photo-frame {
+  overflow: hidden;
+}
+
+.loveworld .photo-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
+/* 4. FLOATING MEMORY PHOTO FRAMES */
+
+.loveworld .floating-memory-card {
+  overflow: hidden;
+}
+
+.loveworld .floating-memory-card img {
+  display: block;
+  width: 100%;
+  height: 170px;
+  object-fit: cover;
+  object-position: center;
+}
+
+/* 5. DAILY SURPRISE PHOTO */
+
+.loveworld .surprise-photo-frame {
+  width: 100%;
+  overflow: hidden;
+}
+
+.loveworld .surprise-photo-frame img {
+  display: block;
+  width: 100%;
+  height: 260px;
+  object-fit: cover;
+  object-position: center;
+}
+
+/* 6. MEMORY STUDIO PHOTO */
+
+.loveworld .memory-card-preview .preview-photo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
+/* 7. LIGHTBOX: KEEP ORIGINAL PHOTO ORIENTATION */
+
+.loveworld .lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(25, 10, 18, 0.94);
+}
+
+.loveworld .lightbox > img {
+  display: block;
+  width: auto !important;
+  height: auto !important;
+  max-width: 94vw;
+  max-height: 88vh;
+  min-width: 0;
+  object-fit: contain !important;
+  object-position: center;
+  aspect-ratio: auto !important;
+  border-radius: 12px;
+}
+
+.loveworld .lightbox .lightbox-close {
+  position: absolute;
+  top: 18px;
+  right: 24px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+  color: white;
+  font-size: 34px;
+  cursor: pointer;
+}
+
+/* 8. TABLET AND MOBILE GALLERY */
+
+@media (max-width: 700px) {
+  .loveworld .gallery-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-rows: auto;
+    gap: 12px;
+  }
+
+  .loveworld .gallery-grid .gallery-item {
+    aspect-ratio: 1 / 1;
+  }
+
+  .loveworld .lightbox {
+    padding: 12px;
+  }
+
+  .loveworld .lightbox > img {
+    max-width: 96vw;
+    max-height: 86vh;
+  }
+}
+
+@media (max-width: 450px) {
+  .loveworld .gallery-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .loveworld .gallery-grid .gallery-item {
+    aspect-ratio: 1 / 1;
+  }
+
+  .loveworld .lightbox > img {
+    max-width: 96vw;
+    max-height: 84vh;
+  }
+}
